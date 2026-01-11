@@ -1,0 +1,31 @@
+# Core dependencies
+python-dotenv>=1.0.0
+typer>=0.9.0
+rich>=13.7.0
+
+# Web framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+jinja2>=3.1.2
+
+# LLM and API
+zhipuai>=2.1.5.20250726
+httpx>=0.26.0
+
+# Vector database and embeddings
+chromadb>=0.4.22
+sentence-transformers>=2.3.1
+FlagEmbedding>=0.2.0  # Optional: for BGE reranker (advanced)
+
+# Markdown processing
+markdown>=3.5.1
+
+# Chinese text processing
+jieba>=0.42.1
+
+# Code quality tools
+black>=24.3.0
+flake8>=7.0.0
+mypy>=1.8.0
+pytest>=8.0.0
+pytest-cov>=4.1.0
