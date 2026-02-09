@@ -3,6 +3,16 @@
 from typing import List, Optional
 
 from src.core.classifier import QueryClassifier, QueryType
+from src.utils.error_handler import (
+    ERROR_MESSAGES,
+    GLMAPIError,
+    GLMAuthenticationError,
+    GLMConnectionError,
+    GLMQuotaExceededError,
+    GLMRateLimitError,
+    GLMServerError,
+    GLMTimeoutError,
+)
 from src.core.hybrid_retriever import HybridRetriever
 from src.core.llm_client import LLMClient
 from src.core.retriever import KnowledgeRetriever
@@ -114,14 +124,45 @@ class Assistant:
                 response = self.llm_client.generate_with_context(
                     query=query, context=context if context else None, conversation_history=messages
                 )
-            except Exception as e:
-                # LLM call failed - try to provide a response based on context
-                logger.error(f"LLM generation failed: {e}")
+            except GLMConnectionError as e:
+                logger.error(f"Connection error: {e}")
                 if context:
-                    # If we have context, try to extract and format the answer
                     response = self._format_context_response(query, context)
                 else:
-                    response = f"Sorry, I am currently unable to generate a response. This may be due to insufficient API balance or network issues.\n\nError: {str(e)}\n\nPlease try again later or contact the administrator."
+                    response = ERROR_MESSAGES["connection_error"]
+            except GLMTimeoutError as e:
+                logger.error(f"Timeout error: {e}")
+                if context:
+                    response = self._format_context_response(query, context)
+                else:
+                    response = ERROR_MESSAGES["timeout_error"]
+            except GLMAuthenticationError as e:
+                logger.error(f"Authentication error: {e}")
+                response = ERROR_MESSAGES["authentication_error"]
+            except GLMRateLimitError as e:
+                logger.error(f"Rate limit error: {e}")
+                response = ERROR_MESSAGES["rate_limit_error"]
+            except GLMQuotaExceededError as e:
+                logger.error(f"Quota exceeded error: {e}")
+                response = ERROR_MESSAGES["quota_exceeded"]
+            except GLMServerError as e:
+                logger.error(f"Server error: {e}")
+                if context:
+                    response = self._format_context_response(query, context)
+                else:
+                    response = ERROR_MESSAGES["server_error"]
+            except GLMAPIError as e:
+                logger.error(f"API error: {e}")
+                if context:
+                    response = self._format_context_response(query, context)
+                else:
+                    response = str(e)
+            except Exception as e:
+                logger.error(f"Unexpected error during LLM generation: {e}")
+                if context:
+                    response = self._format_context_response(query, context)
+                else:
+                    response = f"Sorry, I am currently unable to generate a response. Please try again later or contact the administrator."
 
         # Update conversation history
         if use_history:

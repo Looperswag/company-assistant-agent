@@ -17,7 +17,11 @@ class Config:
         """Initialize configuration from environment variables."""
         # 智谱AI配置
         self.zhipuai_api_key: str = os.getenv("ZHIPUAI_API_KEY", "")
+        self.zhipuai_base_url: str = os.getenv("ZHIPUAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
         self.zhipuai_model: str = os.getenv("ZHIPUAI_MODEL", "glm-4.7")
+        self.glm_api_timeout: int = int(os.getenv("GLM_API_TIMEOUT", "60"))
+        self.glm_max_retries: int = int(os.getenv("GLM_MAX_RETRIES", "3"))
+        self.glm_connection_timeout: int = int(os.getenv("GLM_CONNECTION_TIMEOUT", "30"))
 
         # Embedding配置
         self.embedding_model: str = os.getenv(
@@ -45,9 +49,13 @@ class Config:
         # 搜索配置
         self.search_enabled: bool = os.getenv("SEARCH_ENABLED", "true").lower() == "true"
         self.max_search_results: int = int(os.getenv("MAX_SEARCH_RESULTS", "5"))
-        self.search_provider: str = os.getenv("SEARCH_PROVIDER", "glm").lower()  # "glm", "duckduckgo", "auto"
+        self.search_provider: str = os.getenv("SEARCH_PROVIDER", "auto").lower()  # "glm", "duckduckgo", "auto"
+        self.search_strategy: str = os.getenv("SEARCH_STRATEGY", "auto").lower()  # "auto", "glm_first", "ddg_first", "glm_only", "ddg_only"
         self.search_recency_filter: str = os.getenv("SEARCH_RECENCY_FILTER", "")  # e.g., "7d", "30d"
         self.search_fallback_enabled: bool = os.getenv("SEARCH_FALLBACK_ENABLED", "true").lower() == "true"
+        self.search_cache_enabled: bool = os.getenv("SEARCH_CACHE_ENABLED", "true").lower() == "true"
+        self.search_cache_ttl: int = int(os.getenv("SEARCH_CACHE_TTL", "3600"))  # seconds, default 1 hour
+        self.search_quality_threshold: float = float(os.getenv("SEARCH_QUALITY_THRESHOLD", "0.3"))
 
         # 安全配置
         self.safety_filter_enabled: bool = (

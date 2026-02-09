@@ -22,7 +22,7 @@ logging.getLogger("assistant").setLevel(logging.WARNING)
 logging.getLogger("jieba").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-app = typer.Typer(help="Company Assistant Agent - AI-powered company assistant")
+app = typer.Typer(help="小美 - ZURU Melon 智能客服助手")
 console = Console()
 
 
@@ -33,7 +33,7 @@ def chat() -> None:
         assistant = Assistant()
         console.print(
             Panel.fit(
-                "[bold green]Company Assistant Agent[/bold green]\n"
+                "[bold green]小美 - ZURU Melon 智能客服[/bold green]\n"
                 "输入您的问题，输入 'exit' 或 'quit' 退出，输入 'clear' 清空历史",
                 title="欢迎",
             )

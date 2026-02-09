@@ -11,9 +11,9 @@ from src.core.assistant import Assistant
 from src.utils.logger import logger
 
 app = FastAPI(
-    title="Company Assistant Agent API",
-    description="AI-powered company assistant web API",
-    version="0.1.0",
+    title="小美智能客服API",
+    description="AI驱动的公司客服助手Web API",
+    version="1.0.0",
 )
 
 # CORS middleware for frontend access

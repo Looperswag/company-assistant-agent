@@ -6,11 +6,106 @@ from typing import List, Optional
 
 import jieba
 
-from src.core.advanced_retriever import BM25Retriever
 from src.core.language_detector import Language, get_detector
 from src.knowledge.vector_store import VectorStore
 from src.utils.config import config
 from src.utils.logger import logger
+
+
+class BM25Retriever:
+    """BM25 keyword-based retriever for multilingual document search."""
+
+    def __init__(
+        self,
+        documents: List[tuple[str, dict]],
+        k1: float = 1.5,
+        b: float = 0.75
+    ) -> None:
+        """Initialize BM25 retriever.
+
+        Args:
+            documents: List of (text, metadata) tuples
+            k1: Term saturation parameter (default 1.5)
+            b: Length normalization parameter (default 0.75)
+        """
+        self.k1 = k1
+        self.b = b
+        self.documents = documents
+        self.doc_freqs: List[dict] = []
+        self.idf: dict = {}
+        self.doc_lens: List[int] = []
+
+        self._build_index()
+
+    def _build_index(self) -> None:
+        """Build BM25 index from documents."""
+        logger.info("Building BM25 index...")
+
+        n = len(self.documents)
+        total_doc_len = 0
+
+        for doc_text, _ in self.documents:
+            tokens = list(jieba.cut(doc_text.lower()))
+            self.doc_lens.append(len(tokens))
+            total_doc_len += len(tokens)
+
+            freq: dict = {}
+            for token in tokens:
+                freq[token] = freq.get(token, 0) + 1
+            self.doc_freqs.append(freq)
+
+        avg_doc_len = total_doc_len / n if n > 0 else 0
+
+        # Calculate IDF for all unique tokens
+        all_tokens = set()
+        for freq in self.doc_freqs:
+            all_tokens.update(freq.keys())
+
+        for token in all_tokens:
+            df = sum(1 for freq in self.doc_freqs if token in freq)
+            self.idf[token] = math.log((n - df + 0.5) / (df + 0.5) + 1)
+
+        self.avg_doc_len = avg_doc_len
+        logger.info(f"BM25 index built: {n} documents, {len(self.idf)} unique terms")
+
+    def search(self, query: str, top_k: int = 10) -> List[dict]:
+        """Search documents using BM25 algorithm.
+
+        Args:
+            query: Search query string
+            top_k: Number of results to return
+
+        Returns:
+            List of results with scores and metadata
+        """
+        query_tokens = list(jieba.cut(query.lower()))
+        scores = []
+
+        for idx, (doc_text, metadata) in enumerate(self.documents):
+            score = 0.0
+            doc_freq = self.doc_freqs[idx]
+            doc_len = self.doc_lens[idx]
+
+            for token in query_tokens:
+                if token not in doc_freq:
+                    continue
+
+                tf = doc_freq[token]
+                idf = self.idf.get(token, 0)
+                numerator = tf * (self.k1 + 1)
+                denominator = tf + self.k1 * (1 - self.b + self.b * doc_len / self.avg_doc_len)
+                score += idf * (numerator / denominator)
+
+            if score > 0:
+                scores.append({
+                    "text": doc_text,
+                    "metadata": metadata,
+                    "score": score,
+                    "type": "bm25"
+                })
+
+        scores.sort(key=lambda x: x["score"], reverse=True)
+        return scores[:top_k]
 
 
 class HybridRetriever:

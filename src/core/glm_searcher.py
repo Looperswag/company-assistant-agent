@@ -2,9 +2,23 @@
 
 from typing import List, Optional
 
+from httpx import Timeout
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    before_sleep_log,
+)
 from zhipuai import ZhipuAI
+from zhipuai.core._errors import APIStatusError
 
 from src.utils.config import config
+from src.utils.error_handler import (
+    GLMAPIError,
+    classify_zhipuai_error,
+    is_retryable_error,
+)
 from src.utils.logger import logger
 
 
@@ -40,16 +54,25 @@ class GLMWebSearcher:
     def __init__(self) -> None:
         """Initialize the GLM web searcher."""
         try:
-            self.client = ZhipuAI(api_key=config.zhipuai_api_key)
+            self.client = ZhipuAI(
+                api_key=config.zhipuai_api_key,
+                base_url=config.zhipuai_base_url,
+                timeout=Timeout(
+                    timeout=config.glm_api_timeout,
+                    connect=config.glm_connection_timeout
+                ),
+            )
             self.enabled = config.search_enabled
             self.max_results = config.max_search_results
             self.recency_filter = getattr(config, "search_recency_filter", "")
+            self.max_retries = getattr(config, "glm_max_retries", 3)
         except Exception as e:
             logger.error(f"Failed to initialize GLM web searcher: {e}")
             self.enabled = False
             self.client = None
             self.max_results = 5
             self.recency_filter = ""
+            self.max_retries = 3
 
     def _clean_query(self, query: str) -> str:
         """Clean up search query by removing redundant phrases.
@@ -93,17 +116,77 @@ class GLMWebSearcher:
             logger.info(f"Cleaned query: '{query}' -> '{cleaned_query}'")
 
         try:
-            # Build API request parameters
-            request_params = {
-                "search_query": cleaned_query,
-                "count": max_results,
-                "search_engine": "google",  # Required: specify search engine
-            }
+            return self._search_with_retry(cleaned_query, max_results)
+        except GLMAPIError as e:
+            logger.error(f"GLM web search failed after retries: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error in GLM web search: {e}")
+            return []
 
-            # Add optional recency filter if configured
-            if self.recency_filter:
-                request_params["search_recency_filter"] = self.recency_filter
+    def _search_with_retry(self, cleaned_query: str, max_results: int) -> List[dict]:
+        """Execute search with retry logic.
 
+        Args:
+            cleaned_query: Cleaned search query
+            max_results: Maximum number of results
+
+        Returns:
+            List of search results
+
+        Raises:
+            GLMAPIError: If search fails after retries
+        """
+
+        @retry(
+            stop=stop_after_attempt(self.max_retries),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            retry=retry_if_exception_type(GLMAPIError),
+            before_sleep=before_sleep_log(logger, logger.level),
+            reraise=True,
+        )
+        def _attempt() -> List[dict]:
+            try:
+                return self._execute_search(cleaned_query, max_results)
+            except APIStatusError as e:
+                classified_error = classify_zhipuai_error(e)
+                if is_retryable_error(classified_error):
+                    logger.warning(f"Retryable search error: {classified_error}, will retry...")
+                    raise classified_error
+                else:
+                    logger.error(f"Non-retryable search error: {classified_error}")
+                    raise classified_error
+            except Exception as e:
+                raise classify_zhipuai_error(e)
+
+        return _attempt()
+
+    def _execute_search(self, cleaned_query: str, max_results: int) -> List[dict]:
+        """Execute the actual GLM web search API call.
+
+        Args:
+            cleaned_query: Cleaned search query
+            max_results: Maximum number of results
+
+        Returns:
+            List of formatted search results
+
+        Raises:
+            APIStatusError: If API request fails
+        """
+        # Build API request parameters
+        request_params = {
+            "search_query": cleaned_query,
+            "count": max_results,
+            "search_engine": "google",  # Required: specify search engine
+        }
+
+        # Add optional recency filter if configured
+        if self.recency_filter:
+            request_params["search_recency_filter"] = self.recency_filter
+
+        try:
+            logger.debug(f"Executing GLM web search for: {cleaned_query}")
             # Call GLM web search API
             response = self.client.web_search.web_search(**request_params)
 
@@ -135,9 +218,12 @@ class GLMWebSearcher:
             )
             return formatted_results
 
+        except APIStatusError as e:
+            logger.error(f"API status error in GLM web search: {e}")
+            raise
         except Exception as e:
-            logger.error(f"GLM web search error: {e}")
-            return []
+            logger.error(f"Unexpected error in GLM web search: {e}")
+            raise APIStatusError(message=str(e), body=None, response=None)
 
     def format_search_results(self, results: List[dict]) -> str:
         """Format search results as a string for LLM context.
