@@ -1,7 +1,7 @@
 """LLM client for ZhipuAI GLM-4 Flash."""
 
 import time
-from typing import List, Optional
+from typing import Iterator, List, Optional
 
 from httpx import Timeout
 from tenacity import (
@@ -270,20 +270,104 @@ class LLMClient:
         Returns:
             Generated response
         """
+        messages = self.build_messages(query, context, conversation_history)
+        return self.generate_response(messages)
+
+    def stream_with_context(
+        self,
+        query: str,
+        context: Optional[str] = None,
+        conversation_history: Optional[List[dict]] = None,
+    ) -> Iterator[str]:
+        """Stream response chunks with context and conversation history."""
+        messages = self.build_messages(query, context, conversation_history)
+        yield from self.stream_response(messages)
+
+    def build_messages(
+        self,
+        query: str,
+        context: Optional[str] = None,
+        conversation_history: Optional[List[dict]] = None,
+    ) -> List[dict]:
+        """Build chat messages payload with context and history."""
         messages: List[dict] = []
 
-        # System message
         system_prompt = self._build_system_prompt(context)
         messages.append({"role": "system", "content": system_prompt})
 
-        # Conversation history
         if conversation_history:
             messages.extend(conversation_history)
 
-        # Current query
         messages.append({"role": "user", "content": query})
+        return messages
 
-        return self.generate_response(messages)
+    def stream_response(
+        self,
+        messages: List[dict],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Iterator[str]:
+        """Yield response content incrementally from streaming API."""
+        temperature = temperature if temperature is not None else self.temperature
+        max_tokens = max_tokens if max_tokens is not None else self.max_tokens
+
+        request_params = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+
+        if self.thinking_enabled:
+            request_params["thinking"] = {"type": "enabled"}
+
+        attempt = 0
+        while attempt < self.max_retries:
+            has_streamed_content = False
+            try:
+                logger.debug(
+                    f"Sending stream iterator request to {self.model}, attempt {attempt + 1}"
+                )
+                response = self.client.chat.completions.create(**request_params)
+
+                for chunk in response:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta
+                        if hasattr(delta, "content") and delta.content:
+                            has_streamed_content = True
+                            yield delta.content
+                return
+            except APIStatusError as e:
+                classified_error = classify_zhipuai_error(e)
+                if (
+                    has_streamed_content
+                    or attempt >= self.max_retries - 1
+                    or not is_retryable_error(classified_error)
+                ):
+                    raise classified_error
+                attempt += 1
+                wait_seconds = min(2 ** attempt, 10)
+                logger.warning(
+                    f"Retryable streaming API error: {classified_error}, "
+                    f"retrying in {wait_seconds}s..."
+                )
+                time.sleep(wait_seconds)
+            except Exception as e:
+                classified_error = classify_zhipuai_error(e)
+                if (
+                    has_streamed_content
+                    or attempt >= self.max_retries - 1
+                    or not is_retryable_error(classified_error)
+                ):
+                    raise classified_error
+                attempt += 1
+                wait_seconds = min(2 ** attempt, 10)
+                logger.warning(
+                    f"Unexpected stream error: {classified_error}, "
+                    f"retrying in {wait_seconds}s..."
+                )
+                time.sleep(wait_seconds)
 
     def _build_system_prompt(self, context: Optional[str] = None) -> str:
         """Build system prompt with optional context.

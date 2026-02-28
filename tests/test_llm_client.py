@@ -1,6 +1,5 @@
 """Tests for LLM client."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 from src.core.llm_client import LLMClient
@@ -25,7 +24,8 @@ class TestLLMClient:
     def test_build_system_prompt_without_context(self) -> None:
         """Test building system prompt without context."""
         prompt = self.client._build_system_prompt()
-        assert "公司助手" in prompt
+        assert "小美" in prompt
+        assert "智能客服助手" in prompt
         assert "上下文" not in prompt or "上下文信息" in prompt
 
     def test_build_system_prompt_with_context(self) -> None:
@@ -34,3 +34,16 @@ class TestLLMClient:
         prompt = self.client._build_system_prompt(context)
         assert context in prompt
         assert "上下文信息" in prompt
+
+    def test_build_messages(self) -> None:
+        """Test message assembly with history and context."""
+        messages = self.client.build_messages(
+            query="测试问题",
+            context="测试上下文",
+            conversation_history=[{"role": "user", "content": "历史问题"}],
+        )
+
+        assert messages[0]["role"] == "system"
+        assert "测试上下文" in messages[0]["content"]
+        assert messages[1]["content"] == "历史问题"
+        assert messages[-1]["content"] == "测试问题"

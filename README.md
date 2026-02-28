@@ -172,6 +172,14 @@ python -m src.main web
 # 访问 http://localhost:8000 与小美对话
 ```
 
+Web 端已升级为：
+
+- Glassmorphism + Aurora 视觉
+- 桌面双栏（知识库 + 对话）与移动双 Tab
+- SSE 流式回答（失败自动回退非流式）
+- 会话隔离（`session_id`）+ 24 小时 TTL
+- 知识库独立搜索与来源卡片交互
+
 ---
 
 ## ⚙️ 配置说明
@@ -189,6 +197,7 @@ python -m src.main web
 | `SEARCH_PROVIDER` | 搜索提供商 (`glm`/`duckduckgo`/`auto`) | `glm` |
 | `MAX_TOKENS` | 最大响应token数 | `65536` |
 | `TEMPERATURE` | LLM温度参数 | `0.7` |
+| `STREAM_ENABLED` | 启用流式生成 | `true` |
 | `SAFETY_FILTER_ENABLED` | 启用安全过滤 | `true` |
 | `LOG_LEVEL` | 日志级别 | `INFO` |
 
@@ -273,12 +282,31 @@ assistant.clear_history()
 # 提交问题
 curl -X POST http://localhost:8000/api/query \
   -H 'Content-Type: application/json' \
-  -d '{"query": "你好小美", "use_history": true}'
+  -d '{"query": "你好小美", "use_history": true, "session_id": "session-1"}'
+
+# 流式回答（SSE）
+curl -N -X POST http://localhost:8000/api/query/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "你好小美", "use_history": true, "session_id": "session-1"}'
+
+# 知识库搜索
+curl -X POST http://localhost:8000/api/knowledge/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "请假流程", "top_k": 8, "min_similarity": 0.2}'
+
+# 知识库概览
+curl http://localhost:8000/api/knowledge/overview
+
+# 会话历史（新接口）
+curl http://localhost:8000/api/sessions/session-1/history
+
+# 清空会话历史（新接口）
+curl -X DELETE http://localhost:8000/api/sessions/session-1/history
 
 # 查看系统状态
 curl http://localhost:8000/api/status
 
-# 清空对话历史
+# 兼容接口：清空默认会话历史
 curl -X POST http://localhost:8000/api/clear-history
 ```
 

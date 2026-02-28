@@ -161,3 +161,43 @@ class VectorStore:
             return count
         except Exception:
             return 0
+
+    def get_document_overview(self, max_documents: int = 200) -> dict:
+        """Get document-level overview aggregated by source/title.
+
+        Args:
+            max_documents: Maximum number of document records to return
+
+        Returns:
+            Aggregated overview with total chunks and document list
+        """
+        try:
+            results = self.collection.get(include=["metadatas"])
+            metadatas = results.get("metadatas", []) if results else []
+        except Exception as e:
+            logger.error(f"Error getting document overview: {e}")
+            return {"total_chunks": 0, "total_documents": 0, "documents": []}
+
+        grouped: dict = {}
+        for metadata in metadatas:
+            source = str(metadata.get("source", "未知"))
+            title = str(metadata.get("title", Path(source).stem if source else "未知"))
+            key = f"{source}::{title}"
+            if key not in grouped:
+                grouped[key] = {"source": source, "title": title, "chunks": 0}
+            grouped[key]["chunks"] += 1
+
+        documents = sorted(
+            grouped.values(),
+            key=lambda item: item["chunks"],
+            reverse=True,
+        )
+
+        if max_documents > 0:
+            documents = documents[:max_documents]
+
+        return {
+            "total_chunks": len(metadatas),
+            "total_documents": len(grouped),
+            "documents": documents,
+        }
