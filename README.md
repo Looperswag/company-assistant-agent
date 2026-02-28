@@ -1,440 +1,261 @@
-# 🌸 小美 - 智能客服助手
+# 小美（ZURU Melon Company Assistant Agent）
 
-> 一个可爱又专业的AI客服，基于RAG架构，精通公司政策、流程与一般知识问答
+基于 **FastAPI + 原生 JS + Tailwind + RAG** 的企业智能客服系统，支持：
 
-[![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://www.python.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![GLM-4](https://img.shields.io/badge/Model-GLM--4.7-purple.svg)](https://open.bigmodel.cn/)
+- 企业知识库检索（向量 + BM25 混合检索）
+- 多轮会话（按 `session_id` 隔离，24h TTL）
+- SSE 流式回复与来源引用展示
+- Web 联网搜索（GLM / DuckDuckGo 自动路由与回退）
+- CLI 与 Web 双入口
 
----
+## 当前模型说明（重要）
 
-## ⚠️ 重要提醒
+当前使用模型为 **GLM-5**。请在 `.env` 中显式设置：
 
-**`.env` 文件中的API密钥仅供测试使用。**
-
-- **禁止**将此API密钥用于任何生产或商业用途
-- **禁止**与任何人分享此API密钥
-- **禁止**将包含此API密钥的代码部署到公共仓库
-- **禁止**滥用API服务发送过量请求
-
-**您必须从 [智谱AI平台](https://open.bigmodel.cn/) 获取自己的API密钥并替换
-
----
-
-## ✨ 特色亮点
-
-| 特性 | 说明 |
-|------|------|
-| 🌸 **小美登场** | 友好专业的智能客服助手，随时为您服务 |
-| 🧠 **聪明大脑** | GLM-4.7模型驱动，理解准确，响应迅速 |
-| 📚 **知识渊博** | RAG架构 + 向量搜索，精通公司知识库 |
-| 🌐 **多语言支持** | BAAI/bge-m3嵌入模型，支持100+语言 |
-| 🔍 **双引擎检索** | 语义向量 + 关键词BM25混合搜索 |
-| 🌐 **联网搜索** | GLM原生搜索 + DuckDuckGo备用方案 |
-| 🛡️ **安全过滤** | 三层防护机制，内容安全有保障 |
-
----
-
-## 🎯 系统架构
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        用户提问                                   │
-└────────────────────────┬────────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     智能分类器                                   │
-│  ┌─────────────┬─────────────┬─────────────┬─────────────┐    │
-│  │   公司内部  │   外部知识  │    含糊    │    有害    │    │
-│  └──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┘    │
-└─────────┼─────────────┼─────────────┼─────────────┼────────────┘
-          │             │             │             │
-          ▼             ▼             │             ▼
-    ┌──────────┐  ┌──────────┐       │       ┌──────────┐
-    │知识库检索│  │ 联网搜索  │       │       │  拦截响应 │
-    └────┬─────┘  └────┬─────┘       │       └──────────┘
-         │            │              │
-         ▼            ▼              │
-    ┌────────────────────────────┐   │
-    │     混合检索引擎           │   │
-    │  ┌────────┬─────────────┐  │   │
-    │  │ 向量搜索│  BM25搜索   │  │   │
-    │  └───┬────┴──────┬──────┘  │   │
-    │      │           │          │   │
-    │      └─────┬─────┘          │   │
-    │            ▼                │   │
-    │     排序融合算法            │   │
-    └────────────┬───────────────┘   │
-                 │                   │
-                 ▼                   │
-         ┌───────────────┐           │
-         │   LLM 客户端  │           │
-         │  (GLM-4.7)    │           │
-         └───────┬───────┘           │
-                 │                   │
-                 ▼                   │
-         ┌───────────────┐           │
-         │   生成回答    │◄──────────┘
-         └───────────────┘
+```env
+ZHIPUAI_MODEL=glm-5
 ```
 
----
+说明：代码中存在历史默认回退值，建议始终在 `.env` 明确指定模型，避免环境差异导致模型不一致。
 
-## 📁 项目结构
+## 核心特性
 
-```
+### 1. RAG 与检索
+
+- `HybridRetriever`：向量检索 + BM25 + 结果融合
+- 语言感知策略（中英文查询自动策略）
+- 查询扩展、相似度阈值过滤、低结果自适应降阈值
+- 向量库基于 ChromaDB，本地持久化
+
+### 2. 会话与回答
+
+- 会话隔离：`session_id -> history + last_accessed`
+- 24 小时 TTL 自动清理
+- 每会话最多保留 20 条消息上下文
+- LLM 异常时提供检索上下文回退答案
+
+### 3. Web 界面（Aurora Editorial 2.1）
+
+- 桌面双栏：知识库 + 对话
+- 移动双 Tab：`Chat` / `Knowledge`
+- 玻璃拟物化（Glassmorphism）+ Aurora 背景
+- 来源折叠卡片、Toast、状态 Popover、自定义确认弹窗
+- 流式增量渲染采用 `requestAnimationFrame` 节流
+
+### 4. Web 搜索能力
+
+- 搜索源：GLM 原生搜索 + DuckDuckGo
+- 自动路由（语言与查询复杂度）
+- 失败回退、缓存、质量评分与去重
+
+## 技术栈
+
+- Python 3.12+
+- FastAPI / Uvicorn
+- ZhipuAI Python SDK
+- ChromaDB
+- sentence-transformers（默认嵌入）
+- Typer + Rich（CLI）
+- 原生 JS + Tailwind（前端）
+
+## 项目结构
+
+```text
 company-assistant-agent/
-├── src/                           # 源代码
-│   ├── cli/                       # 命令行界面
-│   │   ├── __init__.py
-│   │   └── interface.py           # 交互式CLI实现
-│   │
-│   ├── core/                      # 核心业务逻辑
-│   │   ├── __init__.py
-│   │   ├── assistant.py           # 主控制器
-│   │   ├── classifier.py          # 查询类型分类器
-│   │   ├── glm_searcher.py        # GLM联网搜索
-│   │   ├── hybrid_retriever.py    # 混合检索引擎
-│   │   ├── llm_client.py          # GLM-4.7 API客户端
-│   │   ├── safety_filter.py       # 内容安全过滤
-│   │   ├── searcher.py            # 联网搜索接口
-│   │   └── error_handler.py       # 错误处理工具
-│   │
-│   ├── knowledge/                 # 知识库处理
-│   │   ├── __init__.py
-│   │   ├── parser.py              # Markdown文档解析器
-│   │   └── vector_store.py        # ChromaDB向量存储封装
-│   │
-│   ├── utils/                     # 工具函数
-│   │   ├── __init__.py
-│   │   ├── config.py              # 配置管理
-│   │   ├── error_handler.py       # 错误分类与处理
-│   │   └── logger.py              # 日志配置
-│   │
-│   └── web/                       # Web界面
-│       ├── api.py                 # FastAPI接口
-│       ├── server.py              # 服务器启动
-│       └── templates/
-│           └── index.html         # 前端页面
-│
-├── tests/                         # 测试套件
-├── Knowledge Base/                # 公司文档（Markdown格式）
-├── chroma_db/                     # 向量数据库存储（自动生成）
-├── .env                           # 环境变量（从env.example创建）
-├── .env.example                   # 环境变量模板
-├── requirements.txt               # Python依赖
-├── setup.py                       # 包安装脚本
-├── pytest.ini                     # Pytest配置
-└── README.md                      # 本文件
+├── Knowledge Base/              # 企业知识库（Markdown）
+├── chroma_db/                   # 向量数据库目录
+├── src/
+│   ├── cli/                     # CLI 入口
+│   ├── core/                    # 分类、检索、LLM、搜索、安全过滤
+│   ├── knowledge/               # 解析与向量存储
+│   ├── utils/                   # 配置、日志、错误处理
+│   └── web/                     # FastAPI + 前端模板
+├── tests/
+├── env.example
+├── requirements.txt
+└── README.md
 ```
 
----
+## 快速开始
 
-## 🚀 快速开始
-
-### 前置要求
-
-- Python 3.12 或更高版本
-- pip 或 conda
-- 智谱AI API密钥（[在这里获取](https://open.bigmodel.cn/)）
-
-### 安装步骤
+### 1. 安装依赖
 
 ```bash
-# 1. 进入项目目录
 cd company-assistant-agent
-
-# 2. 创建虚拟环境（推荐）
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 3. 安装依赖
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+```
 
-# 4. 配置环境变量
+### 2. 配置环境变量
+
+```bash
 cp env.example .env
-# 编辑 .env 文件，添加您的 ZHIPUAI_API_KEY
+```
 
-# 5. 初始化知识库
+至少配置：
+
+```env
+ZHIPUAI_API_KEY=你的密钥
+ZHIPUAI_MODEL=glm-5
+```
+
+### 3. 初始化知识库
+
+```bash
 python -m src.main init
+```
 
-# 6. 启动小美！
+### 4. 启动
+
+CLI 对话：
+
+```bash
 python -m src.main chat
 ```
 
-### Web界面使用
+Web 服务：
 
 ```bash
-# 启动Web服务
 python -m src.main web
-
-# 访问 http://localhost:8000 与小美对话
+# 浏览器访问 http://localhost:8000
 ```
 
-Web 端已升级为：
+开发热重载：
 
-- Glassmorphism + Aurora 视觉
-- 桌面双栏（知识库 + 对话）与移动双 Tab
-- SSE 流式回答（失败自动回退非流式）
-- 会话隔离（`session_id`）+ 24 小时 TTL
-- 知识库独立搜索与来源卡片交互
+```bash
+python -m src.main web --reload
+```
 
----
+## CLI 命令
 
-## ⚙️ 配置说明
+| 命令 | 说明 |
+|---|---|
+| `python -m src.main chat` | 交互式多轮对话 |
+| `python -m src.main init` | 解析知识库并写入向量库 |
+| `python -m src.main query "..."` | 单次提问 |
+| `python -m src.main status` | 查看系统与向量库状态 |
+| `python -m src.main web` | 启动 Web 服务 |
 
-### 环境变量
+## Web API 概览
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `ZHIPUAI_API_KEY` | 智谱AI API密钥 | 必填 |
-| `ZHIPUAI_MODEL` | 使用的模型 | `glm-4.7` |
-| `EMBEDDING_MODEL` | 嵌入模型 | `BAAI/bge-m3` |
-| `KNOWLEDGE_BASE_PATH` | 知识库目录 | `Knowledge Base` |
-| `VECTOR_DB_PATH` | 向量数据库路径 | `chroma_db` |
-| `SEARCH_ENABLED` | 启用联网搜索 | `true` |
-| `SEARCH_PROVIDER` | 搜索提供商 (`glm`/`duckduckgo`/`auto`) | `glm` |
-| `MAX_TOKENS` | 最大响应token数 | `65536` |
-| `TEMPERATURE` | LLM温度参数 | `0.7` |
-| `STREAM_ENABLED` | 启用流式生成 | `true` |
-| `SAFETY_FILTER_ENABLED` | 启用安全过滤 | `true` |
+### 问答相关
+
+- `POST /api/query`：非流式问答
+- `POST /api/query/stream`：SSE 流式问答（`chunk/sources/done/error`）
+
+`/api/query` 响应包含：
+
+- `response: str`
+- `session_id: str`
+- `sources: SourceItem[]`
+- `latency_ms: int`
+
+### 知识库相关
+
+- `POST /api/knowledge/search`
+- `GET /api/knowledge/overview`
+
+### 会话相关
+
+- `GET /api/sessions/{session_id}/history`
+- `DELETE /api/sessions/{session_id}/history`
+
+### 兼容接口
+
+- `GET /api/history`
+- `POST /api/clear-history`
+
+### 健康检查
+
+- `GET /health`
+- `GET /api/status`
+
+## 关键配置（与当前代码对齐）
+
+### 模型与请求
+
+| 变量 | 说明 | 推荐/默认 |
+|---|---|---|
+| `ZHIPUAI_API_KEY` | 智谱 API Key | 必填 |
+| `ZHIPUAI_BASE_URL` | 智谱基地址 | `https://open.bigmodel.cn/api/paas/v4` |
+| `ZHIPUAI_MODEL` | 对话模型 | **推荐 `glm-5`** |
+| `GLM_API_TIMEOUT` | 请求超时（秒） | `60` |
+| `GLM_MAX_RETRIES` | 重试次数 | `3` |
+| `GLM_CONNECTION_TIMEOUT` | 连接超时（秒） | `30` |
+| `MAX_TOKENS` | 最大 token | `65536` |
+| `TEMPERATURE` | 温度 | `0.7` |
+| `STREAM_ENABLED` | 默认启用流式 | `true` |
+| `THINKING_ENABLED` | 启用 thinking 参数 | `true` |
+
+### 知识库与检索
+
+| 变量 | 说明 | 默认 |
+|---|---|---|
+| `KNOWLEDGE_BASE_PATH` | 知识库路径 | `Knowledge Base` |
+| `VECTOR_DB_PATH` | 向量库存储目录 | `chroma_db` |
+| `EMBEDDING_MODEL` | 嵌入模型 | `sentence-transformers/all-MiniLM-L6-v2` |
+| `CHUNK_SIZE` | 分块大小 | `500` |
+| `CHUNK_OVERLAP` | 分块重叠 | `50` |
+| `MIN_SIMILARITY` | 最低相似度 | `0.25` |
+| `MAX_RESULTS` | 最大检索结果 | `10` |
+| `TOP_K` | Top-K | `5` |
+| `RETRIEVAL_STRATEGY` | `auto/vector/bm25/hybrid` | `auto` |
+
+### 联网搜索与系统
+
+| 变量 | 说明 | 默认 |
+|---|---|---|
+| `SEARCH_ENABLED` | 是否启用联网搜索 | `true` |
+| `SEARCH_PROVIDER` | `auto/glm/duckduckgo` | `auto` |
+| `SEARCH_STRATEGY` | `auto/glm_first/ddg_first/...` | `auto` |
+| `SEARCH_FALLBACK_ENABLED` | 搜索失败回退 | `true` |
+| `SEARCH_CACHE_ENABLED` | 搜索缓存 | `true` |
+| `SEARCH_CACHE_TTL` | 缓存 TTL（秒） | `3600` |
+| `SEARCH_QUALITY_THRESHOLD` | 质量阈值 | `0.3` |
+| `SAFETY_FILTER_ENABLED` | 安全过滤 | `true` |
 | `LOG_LEVEL` | 日志级别 | `INFO` |
+| `LOG_FILE` | 日志文件 | `assistant.log` |
 
-### 检索配置
+## 测试
 
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `CHUNK_SIZE` | 文档分块大小 | `500` |
-| `CHUNK_OVERLAP` | 分块重叠大小 | `50` |
-| `SIMILARITY_THRESHOLD` | 最小相似度阈值 | `0.3` |
-| `MAX_RESULTS` | 最大知识库结果数 | `10` |
-| `TOP_K` | 返回的前K个结果 | `5` |
-| `RETRIEVAL_STRATEGY` | 检索策略 | `auto` |
-
----
-
-## 🎨 技术栈
-
-| 组件 | 技术 | 用途 |
-|------|------|------|
-| **大语言模型** | 智谱AI GLM-4.7 | 文本生成 |
-| **向量数据库** | ChromaDB | 语义相似度搜索 |
-| **嵌入模型** | BAAI/bge-m3 | 多语言文本嵌入 |
-| **关键词搜索** | BM25 (rank_bm25) | 词汇搜索 |
-| **联网搜索** | GLM原生 + DuckDuckGo | 外部知识检索 |
-| **Web框架** | FastAPI + Uvicorn | Web服务 |
-| **前端** | Tailwind CSS + 原生JS | 美观的Web界面 |
-| **CLI框架** | Typer + Rich | 交互式命令行 |
-| **测试框架** | pytest | 单元与集成测试 |
-
----
-
-## 📖 使用示例
-
-### 命令行对话
+运行全部测试：
 
 ```bash
-$ python -m src.main chat
-
-╭──────────────────────────────────────────╮
-│              欢迎                        │
-│                                          │
-│  小美 - ZURU Melon 智能客服              │
-│  输入您的问题，输入 'exit' 或 'quit' 退出 │
-╰──────────────────────────────────────────╯
-
-您: 你好！你是谁？
-
-小美: 你好！我是小美，ZURU Melon 的专业公司助理。
-
-您: 如何申请年假？
-
-小美: 员工可以通过以下步骤申请年假：
-1. 至少提前2周通过HR门户提交请假申请
-2. 管理者将在5个工作日内审核批准
-3. HR将更新请假记录系统并通过邮件确认
-
-您: exit
-
-再见！
+pytest --no-cov -q
 ```
 
-### Python API调用
-
-```python
-from src.core.assistant import Assistant
-
-# 初始化小美
-assistant = Assistant()
-
-# 处理查询
-response = assistant.process_query("什么是公司的请假政策？")
-print(response)
-
-# 清空对话历史
-assistant.clear_history()
-```
-
-### Web API调用
+常用测试集：
 
 ```bash
-# 提交问题
-curl -X POST http://localhost:8000/api/query \
-  -H 'Content-Type: application/json' \
-  -d '{"query": "你好小美", "use_history": true, "session_id": "session-1"}'
-
-# 流式回答（SSE）
-curl -N -X POST http://localhost:8000/api/query/stream \
-  -H 'Content-Type: application/json' \
-  -d '{"query": "你好小美", "use_history": true, "session_id": "session-1"}'
-
-# 知识库搜索
-curl -X POST http://localhost:8000/api/knowledge/search \
-  -H 'Content-Type: application/json' \
-  -d '{"query": "请假流程", "top_k": 8, "min_similarity": 0.2}'
-
-# 知识库概览
-curl http://localhost:8000/api/knowledge/overview
-
-# 会话历史（新接口）
-curl http://localhost:8000/api/sessions/session-1/history
-
-# 清空会话历史（新接口）
-curl -X DELETE http://localhost:8000/api/sessions/session-1/history
-
-# 查看系统状态
-curl http://localhost:8000/api/status
-
-# 兼容接口：清空默认会话历史
-curl -X POST http://localhost:8000/api/clear-history
+pytest --no-cov -q tests/test_web_api.py
+pytest --no-cov -q tests/test_integration.py
+pytest --no-cov -q tests/test_llm_client.py
 ```
 
----
+## 常见问题
 
-## 🔧 开发指南
+### 1) Web 页无知识库数据
 
-### 运行测试
+- 先执行 `python -m src.main init`
+- 或调用任一 API 触发懒初始化（若知识库目录存在 Markdown）
 
-```bash
-# 运行所有测试
-pytest
+### 2) 流式无输出
 
-# 运行带覆盖率的测试
-pytest --cov=src --cov-report=html
+- 检查代理层是否关闭缓冲
+- 确认服务端 `text/event-stream` 未被中间件截断
 
-# 运行特定测试文件
-pytest tests/test_classifier.py -v
-```
+### 3) 会话不连续
 
-### 代码格式化
+- 检查浏览器 `assistant_session_id` 是否被清理
+- 检查是否切换了域名/端口
 
-```bash
-# 格式化代码
-black src/ tests/
+## 安全说明
 
-# 排序导入
-isort src/ tests/
+- 请勿将真实 `ZHIPUAI_API_KEY` 提交到仓库
+- 建议在生产环境中启用鉴权、限流、审计日志
+- 当前仓库默认面向本地/内网验证，不包含完整多租户安全隔离
 
-# 类型检查
-mypy src/
-```
+## 许可证
 
----
-
-## 🎯 核心功能实现
-
-### 1. 知识库处理 (`src/knowledge/`)
-
-**`parser.py`**: 解析Markdown文档为分块
-- 按标题分割文档以保持结构
-- 创建重叠分块以提供更好上下文
-- 提取元数据（来源文件、标题、分块索引）
-
-**`vector_store.py`**: 管理ChromaDB向量存储
-- 初始化持久化向量数据库
-- 使用bge-m3生成嵌入
-- 执行可配置阈值的相似度搜索
-
-### 2. 混合检索系统 (`src/core/hybrid_retriever.py`)
-
-**混合检索策略**:
-1. **向量搜索**: 使用余弦距离的语义相似度
-2. **BM25搜索**: 基于关键词的词汇搜索
-3. **查询扩展**: 生成多语言查询变体
-4. **排序融合**: 使用倒数排名融合(RRF)合并结果
-
-**关键特性**:
-- 自动语言检测
-- 多语言查询扩展
-- 可配置检索策略(vector/bm25/hybrid/auto)
-- 相似度阈值过滤
-
-### 3. 查询分类 (`src/core/classifier.py`)
-
-**分类逻辑**:
-1. 检查显式联网搜索短语
-2. 对公司相关关键词评分
-3. 对外部知识关键词评分
-4. 基于评分确定查询类型
-
-**查询类型**:
-- `COMPANY_INTERNAL`: 政策、流程、HR问题
-- `EXTERNAL_KNOWLEDGE`: 最新新闻、实时信息
-- `AMBIGUOUS`: 可能是两者之一
-- `HARMFUL`: 攻击、黑客、非法活动
-
-### 4. 安全过滤 (`src/core/safety_filter.py`)
-
-**三层过滤机制**:
-1. **有害内容**: 攻击、黑客、恶意软件、病毒
-2. **不当内容**: 色情、暴力、歧视
-3. **违规操作**: 泄露机密、绕过安全
-
-### 5. 联网搜索 (`src/core/searcher.py`, `glm_searcher.py`)
-
-**双提供商系统**:
-- **主要**: GLM-4.7原生联网搜索API
-- **备用**: DuckDuckGo（免费，无需API密钥）
-
-### 6. 主控制器 (`src/core/assistant.py`)
-
-**查询处理流程**:
-1. 安全检查 → 有害则拦截
-2. 查询分类 → 确定检索策略
-3. 上下文检索 → 知识库或联网搜索
-4. 响应生成 → LLM结合上下文
-5. 历史管理 → 跟踪对话
-
----
-
-## 🌟 设计决策
-
-### 为什么选择GLM-4.7？
-
-| 因素 | GLM-4 Flash | GLM-4.7 |
-|------|-------------|---------|
-| 成本 | 约50%更低 | 更高 |
-| 速度 | 更快 | 较慢 |
-| 质量 | 适合问答 | 更适合复杂任务 |
-| 用途 | 公司助手 | 研究/分析 |
-
-**决策**: 对于公司内部问答，4.7提供更好的质量和理解能力。
-
-### 为什么使用混合检索？
-
-| 方法 | 优势 | 劣势 |
-|------|------|------|
-| 仅向量 | 语义理解 | 错过精确关键词 |
-| 仅BM25 | 精确关键词匹配 | 无语义理解 |
-| **混合** | **语义+关键词** | **稍复杂** |
-
-### 为什么选择ChromaDB？
-
-- **本地部署** - 无需外部服务依赖
-- **零成本** - 无订阅费用
-- **足够用** - 轻松处理公司规模文档
-- **隐私保护** - 数据保留在本地
-
-
-
+MIT
